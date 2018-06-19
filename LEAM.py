@@ -246,6 +246,7 @@ class LEAMModel(object):
         self.embpath = opt.embpath
         self.wordtoix = None
         self.ixtoword = None
+        self.probability = []
     
     def fit(self, X, y, wordtoix, ixtoword, class_name):
         
@@ -356,7 +357,7 @@ class LEAMModel(object):
             keep_prob = tf.placeholder(tf.float32,name='keep_prob')
             y_ = tf.placeholder(tf.float32, shape=[opt.batch_size, opt.num_class],name='y_')
             class_penalty_ = tf.placeholder(tf.float32, shape=())
-            accuracy_, loss_, train_op, W_norm_, global_step, beta, _, y_pred = emb_classifier(x_, x_mask_, y_, keep_prob, opt, class_penalty_)
+            accuracy_, loss_, train_op, W_norm_, global_step, beta, prob, y_pred = emb_classifier(x_, x_mask_, y_, keep_prob, opt, class_penalty_)
         
             saver = tf.train.Saver()
 
@@ -373,7 +374,7 @@ class LEAMModel(object):
             
             predictions = []
             keys = []
-            
+                        
             for _, test_index in kf_test:
 
                 test_sents = [test[t] for t in test_index]
@@ -382,9 +383,8 @@ class LEAMModel(object):
                 test_labels = test_labels.reshape((len(test_labels), opt.num_class))
                 x_test_batch, x_test_batch_mask = prepare_data_for_emb(test_sents, opt)
 
-                b, y_p = sess.run([beta, y_pred],feed_dict={x_: x_test_batch, x_mask_: x_test_batch_mask,y_: test_labels, keep_prob: 1.0, class_penalty_: 0.0})
+                b, y_p, p = sess.run([beta, y_pred, prob],feed_dict={x_: x_test_batch, x_mask_: x_test_batch_mask,y_: test_labels, keep_prob: 1.0, class_penalty_: 0.0})
                 
-                #print(b)
                 key = key_words_number(x_test_batch, b, opt, self.ixtoword)
                 
                 for i in y_p:
@@ -393,6 +393,8 @@ class LEAMModel(object):
                 for j in key:
                     keys.append(j)
                 
+                for pp in p:
+                    self.probability.append(pp)
                 #predictions.append(y_p)
                 #keys.append(key)
                 
@@ -402,62 +404,66 @@ class LEAMModel(object):
         
         return predictions, keys
       
-    def predict_proba(self, X):
+    def predict_proba(self, X=False):
         
-        opt = self.opt
-        test = X
-        test_lab = np.zeros([np.array(test).shape[0],self.num_class,1],dtype=int)
-
-        try:
-            opt.W_emb = np.array(cPickle.load(open(self.embpath, 'rb')),dtype='float32')
-            opt.W_class_emb =  load_class_embedding( self.wordtoix, opt)
+        if (not X):            
+            return self.probability
         
-        except IOError:
-            print('No embedding file found.')
-            opt.fix_emb = False        
-        
-        graph = tf.Graph()
-        
-        with graph.as_default():
+        else:            
+            opt = self.opt
+            test = X
+            test_lab = np.zeros([np.array(test).shape[0],self.num_class,1],dtype=int)
+    
+            try:
+                opt.W_emb = np.array(cPickle.load(open(self.embpath, 'rb')),dtype='float32')
+                opt.W_class_emb =  load_class_embedding( self.wordtoix, opt)
             
-            x_ = tf.placeholder(tf.int32, shape=[opt.batch_size, opt.maxlen],name='x_')
-            x_mask_ = tf.placeholder(tf.float32, shape=[opt.batch_size, opt.maxlen],name='x_mask_')
-            keep_prob = tf.placeholder(tf.float32,name='keep_prob')
-            y_ = tf.placeholder(tf.float32, shape=[opt.batch_size, opt.num_class],name='y_')
-            class_penalty_ = tf.placeholder(tf.float32, shape=())
-            accuracy_, loss_, train_op, W_norm_, global_step, _, prob, _ = emb_classifier(x_, x_mask_, y_, keep_prob, opt, class_penalty_)
-        
-            saver = tf.train.Saver()
-
-        config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True, )
-        config.gpu_options.allow_growth = True
-        
-        np.set_printoptions(precision=3)
-        np.set_printoptions(threshold=np.inf)
-        
-        with tf.Session(graph=graph, config=config) as sess:
-            saver.restore(sess, tf.train.latest_checkpoint('save'))
+            except IOError:
+                print('No embedding file found.')
+                opt.fix_emb = False        
             
-            kf_test = get_minibatches_idx(len(test), opt.batch_size, shuffle=False)
+            graph = tf.Graph()
             
-            probability=[]
-            
-            for _, test_index in kf_test:
-
-                test_sents = [test[t] for t in test_index]
-                test_labels = [test_lab[t] for t in test_index]
-                test_labels = np.array(test_labels)
-                test_labels = test_labels.reshape((len(test_labels), opt.num_class))
-                x_test_batch, x_test_batch_mask = prepare_data_for_emb(test_sents, opt)
-
-                p = sess.run(prob, feed_dict={x_: x_test_batch, x_mask_: x_test_batch_mask,y_: test_labels, keep_prob: 1.0, class_penalty_: 0.0})
-                #print(p)
-                #probability.append(p)
+            with graph.as_default():
                 
-                for pp in p:
-                    probability.append(pp)
-        
-        return probability
+                x_ = tf.placeholder(tf.int32, shape=[opt.batch_size, opt.maxlen],name='x_')
+                x_mask_ = tf.placeholder(tf.float32, shape=[opt.batch_size, opt.maxlen],name='x_mask_')
+                keep_prob = tf.placeholder(tf.float32,name='keep_prob')
+                y_ = tf.placeholder(tf.float32, shape=[opt.batch_size, opt.num_class],name='y_')
+                class_penalty_ = tf.placeholder(tf.float32, shape=())
+                accuracy_, loss_, train_op, W_norm_, global_step, _, prob, _ = emb_classifier(x_, x_mask_, y_, keep_prob, opt, class_penalty_)
+            
+                saver = tf.train.Saver()
+    
+            config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True, )
+            config.gpu_options.allow_growth = True
+            
+            np.set_printoptions(precision=3)
+            np.set_printoptions(threshold=np.inf)
+            
+            with tf.Session(graph=graph, config=config) as sess:
+                saver.restore(sess, tf.train.latest_checkpoint('save'))
+                
+                kf_test = get_minibatches_idx(len(test), opt.batch_size, shuffle=False)
+                
+                probability=[]
+                
+                for _, test_index in kf_test:
+    
+                    test_sents = [test[t] for t in test_index]
+                    test_labels = [test_lab[t] for t in test_index]
+                    test_labels = np.array(test_labels)
+                    test_labels = test_labels.reshape((len(test_labels), opt.num_class))
+                    x_test_batch, x_test_batch_mask = prepare_data_for_emb(test_sents, opt)
+    
+                    p = sess.run(prob, feed_dict={x_: x_test_batch, x_mask_: x_test_batch_mask,y_: test_labels, keep_prob: 1.0, class_penalty_: 0.0})
+                    #print(p)
+                    #probability.append(p)
+                    
+                    for pp in p:
+                        probability.append(pp)
+            
+            return probability
 
 def load_data(path="./data/mbu.p"):
     
@@ -500,7 +506,8 @@ def main():
     
     predictions, keys = Model.predict(test_X)
     print_keys(predictions, keys)
-    #probability = Model.predict_proba(test_X)
+    probability = Model.predict_proba()
+    print(probability)
     
     test_accuracy = compute_acc(predictions,test_lab)
     print("Test accuracy %f " % test_accuracy)
