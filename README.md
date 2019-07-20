@@ -16,7 +16,7 @@ Comparison Illustration of proposed **LEAM** with traditional methods for text s
 
 Traditional Method           |  LEAM: Label Embedding Attentive Model
 :-------------------------:|:-------------------------:
-![](/plots/schemes/scheme_a.png) |  ![](/plots/schemes/scheme_b.png)
+![](/plots/scheme_a.png) |  ![](/plots/scheme_b.png)
 Directly aggregating word embedding **V** for text sequence representation **z** | We leverage the “compatibility” **G** between embedded words **V** and labels **C** to derive the attention score **β** for improved **z**.
 
 
@@ -51,7 +51,7 @@ To run the test, use the command `python model.py`.
 ## Prediction and visuliation on 
 Ten topics prediction from yahoo
 
-![](/plots/schemes/predictions.png) 
+![](/plots/predictions.png) 
 
 
 
